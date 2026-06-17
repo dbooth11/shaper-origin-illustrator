@@ -1,11 +1,25 @@
+/*
+ * Adobe-native panel styling (Spectrum dark) with a Shaper-brand accent.
+ * Colors are CSS variables; main.js overrides --bg/surface/text from the host's
+ * appSkinInfo so the panel follows Illustrator's UI brightness. The dark values
+ * below are the defaults (also used for browser preview).
+ *
+ * --accent is the ONLY brand color — swap it to Shaper's exact hex in one place.
+ */
 :root {
-  --bg:      #14142a;
-  --surface: #1c1c35;
-  --border:  #33335a;
-  --text:    #e4e4f0;
-  --dim:     #cdcdd1;
-  --accent:  #f0c040;
-  --gold:    #ffe060;
+  --bg:         #323232;   /* panel background (Illustrator default brightness) */
+  --surface:    #3a3a3a;   /* rows / controls */
+  --surface-hi: #454545;   /* hover */
+  --field:      #1d1d1d;   /* input wells */
+  --border:     #4a4a4a;
+  --border-hi:  #5e5e5e;
+  --text:       #e8e8e8;
+  --dim:        #9a9a9a;
+  --hint:       #8a8a8a;
+
+  --accent:     #12b5a6;   /* Shaper teal — brand accent (CTA / focus / selected) */
+  --accent-hi:  #16ccbb;   /* hover */
+  --on-accent:  #07312c;   /* text on the accent button */
 }
 
 * { box-sizing: border-box; }
@@ -14,7 +28,7 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-family: "adobe-clean", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   -webkit-user-select: none;
   user-select: none;
@@ -24,97 +38,98 @@ html, body {
 
 h1 {
   margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.22em;
-  font-weight: 700;
-  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: var(--dim);
 }
 
 section { display: flex; flex-direction: column; gap: 6px; }
 
 .label {
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--dim);
 }
-.label .sub { text-transform: none; letter-spacing: 0; opacity: 0.6; }
+.label .sub { text-transform: none; letter-spacing: 0; color: var(--hint); }
 
-/* Cut-type buttons */
 button {
   font-family: inherit;
   color: var(--text);
   cursor: pointer;
-  border-radius: 6px;
-  transition: background .12s, border-color .12s, transform .04s;
+  border-radius: 4px;
+  transition: background .1s, border-color .1s;
 }
-button:active { transform: translateY(1px); }
 
+/* Cut-type rows (Spectrum action-button feel) */
 .cut {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
+  padding: 8px 9px;
   background: var(--surface);
   border: 1px solid var(--border);
   text-align: left;
 }
-.cut:hover { background: #232342; border-color: #4a4a7a; }
+.cut:hover { background: var(--surface-hi); border-color: var(--border-hi); }
 
 .cut .sw {
-  width: 16px; height: 16px;
-  border-radius: 3px;
+  width: 15px; height: 15px;
+  border-radius: 2px;
   flex: 0 0 auto;
 }
-.cut .name { font-weight: 600; }
-.cut .hint { margin-left: auto; font-size: 11px; color: var(--dim); opacity: 0.7; }
+.cut .name { font-weight: 500; }
+.cut .hint { margin-left: auto; font-size: 11px; color: var(--hint); }
 
 /* Depth row */
 .row { display: flex; gap: 6px; }
-.row > * { height: 30px; }
+.row > * { height: 28px; }
 
 input[type="number"], select {
   flex: 1 1 auto;
-  background: #0f0f22;
+  background: var(--field);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-hi);
+  border-radius: 4px;
   padding: 0 8px;
-  font-family: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 13px;
 }
-select { flex: 0 0 56px; }
+select { flex: 0 0 58px; }
 input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .ghost {
   flex: 1 1 50%;
-  background: transparent;
-  border: 1px solid var(--border);
-  padding: 7px 0;
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  padding: 6px 0;
+  height: 30px;
 }
-.ghost:hover { background: var(--surface); border-color: #4a4a7a; }
+.ghost:hover { background: var(--surface-hi); }
 
 .primary {
-  background: var(--gold);
-  color: #1a1400;
+  background: var(--accent);
+  color: var(--on-accent);
   border: none;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  padding: 11px 0;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 9px 0;
+  height: 32px;
   margin-top: 2px;
 }
-.primary:hover { background: #ffe98a; }
+.primary:hover { background: var(--accent-hi); }
 
 .status {
-  font-family: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--dim);
-  background: #0f0f22;
+  color: var(--hint);
+  background: var(--field);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 9px;
-  min-height: 16px;
+  border-radius: 4px;
+  padding: 6px 8px;
+  min-height: 14px;
 }
-.status.ok  { color: #40d88a; border-color: #2a6a4a; }
-.status.err { color: #e8445a; border-color: #6a2a3a; }
+.status.ok  { color: var(--accent); border-color: var(--border-hi); }
+.status.err { color: #ec5b5b; border-color: #6a3030; }

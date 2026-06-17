@@ -12,6 +12,36 @@
   var inCEP = (typeof window !== 'undefined' && typeof window.__adobe_cep__ !== 'undefined');
   var cs = inCEP ? new CSInterface() : null;
 
+  // Follow Illustrator's UI brightness via appSkinInfo. The host exposes the
+  // panel background RGB; we derive lightness and flip CSS variables so the
+  // panel stays legible in both Illustrator's dark and light UI themes.
+  if (inCEP) {
+    try {
+      var env = JSON.parse(cs.getHostEnvironment());
+      var skin = env && env.appSkinInfo;
+      if (skin) {
+        var rgb = skin.panelBackgroundColor && skin.panelBackgroundColor.color;
+        if (rgb) {
+          var L = (rgb.red * 0.299 + rgb.green * 0.587 + rgb.blue * 0.114) / 255;
+          var r = document.documentElement;
+          if (L > 0.5) {
+            // Light UI
+            r.style.setProperty('--bg',         '#f0f0f0');
+            r.style.setProperty('--surface',     '#e4e4e4');
+            r.style.setProperty('--surface-hi',  '#d8d8d8');
+            r.style.setProperty('--field',       '#ffffff');
+            r.style.setProperty('--border',      '#c0c0c0');
+            r.style.setProperty('--border-hi',   '#a8a8a8');
+            r.style.setProperty('--text',        '#1e1e1e');
+            r.style.setProperty('--dim',         '#505050');
+            r.style.setProperty('--hint',        '#707070');
+            r.style.setProperty('--on-accent',   '#ffffff');
+          }
+        }
+      }
+    } catch (e) { /* skin detection is best-effort */ }
+  }
+
   var statusEl = document.getElementById('status');
 
   function setStatus(msg, kind) {
