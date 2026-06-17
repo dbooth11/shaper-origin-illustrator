@@ -1,0 +1,237 @@
+/*
+ * shaper-core.jsxinc — Shaper Origin cut-encoding engine for Adobe Illustrator
+ * GPL-3.0. Shared by the CEP panel (host/shaper.jsx) and the File > Scripts wrappers.
+ *
+ * Cut-type encoding verified against the Shaper Origin Product Manual (p.4):
+ *     interior cut   → black stroke, white fill   (through-hole at SVG dimensions)
+ *     exterior cut   → black stroke, black fill   (cut out a positive shape)
+ *     on-line cut    → gray  stroke, no fill      (engrave on the line)
+ *     pocketing cut  → no stroke,  gray fill      (remove material to on-tool depth)
+ *     guide          → blue  stroke, no fill      (reference mark, not cut)
+ *   "the line width does not affect the width of the cut" — so stroke weight is cosmetic.
+ *
+ * On export we also emit the explicit Shaper attributes (matching Shaper Hub's own output):
+ *     <svg xmlns:shaper="http://www.shapertools.com/namespaces/shaper">
+ *       <path shaper:cutType="inside" shaper:cutDepth="0.2 in" .../>
+ *   cutType ∈ {inside, outside, online, pocket, guide} — derived from the path's colors.
+ *   cutDepth format is "<number> <unit>" (note the space), unit "in" or "mm".
+ * Illustrator's SVG exporter will not emit these, so cutType is recovered from the fill/stroke
+ * and depth is stamped into the path's NAME (exported as the element id), both converted to
+ * shaper: attributes during exportForOrigin()'s post-process pass.
+ */
+
+// ──────────────────────────────────────────────────────────────────────────
+// Encoding constants (RGB 0–255)
+// ──────────────────────────────────────────────────────────────────────────
+var SHAPER_BLACK = [0,   0,   0  ];   // #000000
+var SHAPER_WHITE = [255, 255, 255];   // #FFFFFF
+var SHAPER_GRAY  = [127, 127, 127];   // #7F7F7F — R=G=B mid-gray ("Origin-readable gray")
+var SHAPER_BLUE  = [0,   104, 255];   // #0068FF — Shaper template guide blue
+
+// cut type → { stroke:[r,g,b]|null, fill:[r,g,b]|null }   (null = none)
+var SHAPER_CUTS = {
+    interior: { stroke: SHAPER_BLACK, fill: SHAPER_WHITE },
+    exterior: { stroke: SHAPER_BLACK, fill: SHAPER_BLACK },
+    online:   { stroke: SHAPER_GRAY,  fill: null         },
+    pocket:   { stroke: null,         fill: SHAPER_GRAY   },
+    guide:    { stroke: SHAPER_BLUE,  fill: null         }
+};
+
+var SHAPER_NS = 'http://www.shapertools.com/namespaces/shaper';
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────
+function _rgb(rgb) {
+    var c = new RGBColor();
+    c.red = rgb[0]; c.green = rgb[1]; c.blue = rgb[2];
+    return c;
+}
+
+// Map a shape's stroke/fill (as found in the exported SVG) to a Shaper cutType
+// value, or null if the colors don't match a known encoding. Mirrors SHAPER_CUTS.
+function _cutTypeFromColors(stroke, fill) {
+    function norm(c) {
+        if (!c) return 'none';
+        c = String(c).toLowerCase().replace(/\s+/g, '');
+        if (c === 'black') return '#000000';
+        if (c === 'white') return '#ffffff';
+        if (c === '#000')  return '#000000';
+        if (c === '#fff')  return '#ffffff';
+        return c;
+    }
+    var s = norm(stroke), f = norm(fill);
+    if (s === '#000000' && f === '#ffffff') return 'inside';   // interior
+    if (s === '#000000' && f === '#000000') return 'outside';  // exterior
+    if (s === '#7f7f7f' && f === 'none')    return 'online';
+    if (s === 'none'    && f === '#7f7f7f') return 'pocket';
+    if (s === '#0068ff' && f === 'none')    return 'guide';
+    return null;
+}
+
+// Flatten a selection into individual PathItems (descends groups & compound paths).
+function _collectPaths(items, out) {
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        switch (it.typename) {
+            case 'PathItem':         out.push(it); break;
+            case 'CompoundPathItem': _collectPaths(it.pathItems, out); break;
+            case 'GroupItem':        _collectPaths(it.pageItems, out); break;
+        }
+    }
+    return out;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// applyCut(type) — paint the selection with a cut-type encoding
+// ──────────────────────────────────────────────────────────────────────────
+function applyCut(type) {
+    if (app.documents.length === 0) return 'No document open.';
+    var spec = SHAPER_CUTS[type];
+    if (!spec) return 'Unknown cut type: ' + type;
+
+    var sel = app.activeDocument.selection;
+    if (!sel || sel.length === 0) return 'Select one or more paths first.';
+
+    var paths = _collectPaths(sel, []);
+    if (paths.length === 0) return 'Selection has no paths.';
+
+    for (var i = 0; i < paths.length; i++) {
+        var p = paths[i];
+
+        // ──── stroke ────
+        if (spec.stroke) {
+            p.stroked = true;
+            p.strokeColor = _rgb(spec.stroke);
+            if (p.strokeWidth <= 0) p.strokeWidth = 0.5; // visible hairline; cut width unaffected
+        } else {
+            p.stroked = false;
+        }
+
+        // ──── fill ────
+        if (spec.fill) {
+            p.filled = true;
+            p.fillColor = _rgb(spec.fill);
+        } else {
+            p.filled = false;
+        }
+    }
+    return 'OK:' + paths.length;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// tagDepth(depth, unit) — stamp/clear an on-tool cut depth on the selection
+//   Stored in PathItem.name as  ShaperDepth_<digits-with-p>_<in|mm>  so it
+//   survives SVG export as the element id (e.g. 0.25 → "ShaperDepth_0p25_in").
+//   Empty/zero depth clears the tag.
+// ──────────────────────────────────────────────────────────────────────────
+function tagDepth(depth, unit) {
+    if (app.documents.length === 0) return 'No document open.';
+    var sel = app.activeDocument.selection;
+    if (!sel || sel.length === 0) return 'Select one or more paths first.';
+
+    var paths = _collectPaths(sel, []);
+    if (paths.length === 0) return 'Selection has no paths.';
+
+    var n = Number(depth);
+    var token = '';
+    if (depth !== null && depth !== '' && !isNaN(n) && n > 0) {
+        if (unit !== 'mm') unit = 'in';
+        token = 'ShaperDepth_' + String(depth).replace(/\./g, 'p') + '_' + unit;
+    }
+    for (var i = 0; i < paths.length; i++) paths[i].name = token;
+    return token === '' ? 'CLEARED:' + paths.length : 'OK:' + paths.length;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// exportForOrigin(unit) — export SVG with Shaper-correct settings, then fix the
+//   72→96 dpi sizing bug and inject the shaper namespace + cutDepth attributes.
+//   `unit` ('in'|'mm') sets the physical width/height written on the root.
+// ──────────────────────────────────────────────────────────────────────────
+function exportForOrigin(unit) {
+    if (app.documents.length === 0) return 'No document open.';
+    if (unit !== 'mm') unit = 'in';
+    var doc = app.activeDocument;
+
+    var base = doc.name.replace(/\.[^\.]+$/, '');
+    var dest = File.saveDialog('Export for Origin — choose SVG destination', 'SVG:*.svg');
+    if (!dest) return 'Cancelled.';
+    if (!/\.svg$/i.test(dest.fsName)) dest = new File(dest.fsName + '.svg');
+
+    // ──── SVG export options tuned for Shaper Origin ────
+    var opts = new ExportOptionsSVG();
+    opts.embedRasterImages  = false;
+    opts.fontType           = SVGFontType.OUTLINEFONT;                  // outline text, no SVG fonts
+    opts.fontSubsetting     = SVGFontSubsetting.None;
+    opts.coordinatePrecision = 4;                                       // accurate geometry
+    opts.cssProperties      = SVGCSSPropertyLocation.PRESENTATIONATTRIBUTES; // fill=/stroke= as attrs
+    opts.documentEncoding   = SVGDocumentEncoding.UTF8;
+    opts.compressed         = false;
+
+    doc.exportFile(dest, ExportType.SVG, opts);
+
+    return _postProcessSvg(dest, unit);
+}
+
+// Read the exported SVG, rewrite the root for correct real-world size, inject depths.
+function _postProcessSvg(file, unit) {
+    file.open('r'); file.encoding = 'UTF-8';
+    var svg = file.read(); file.close();
+
+    // 1) user-unit extent — prefer viewBox, fall back to numeric width/height (Illustrator: 72/in)
+    var pxW = null, pxH = null;
+    var vb = svg.match(/viewBox\s*=\s*"([^"]+)"/);
+    if (vb) {
+        var p = vb[1].replace(/,/g, ' ').replace(/^\s+/, '').split(/\s+/);
+        pxW = parseFloat(p[2]); pxH = parseFloat(p[3]);
+    } else {
+        var wM = svg.match(/<svg\b[^>]*\bwidth\s*=\s*"([\d.]+)/);
+        var hM = svg.match(/<svg\b[^>]*\bheight\s*=\s*"([\d.]+)/);
+        if (wM && hM) { pxW = parseFloat(wM[1]); pxH = parseFloat(hM[1]); }
+    }
+
+    // 2) px (1/72 in) → physical units
+    var toUnit = (unit === 'mm') ? (25.4 / 72.0) : (1.0 / 72.0);
+    function fmt(v) { return (Math.round(v * 10000) / 10000) + unit; }
+
+    // 3) rewrite <svg …>: explicit physical width/height + viewBox + shaper namespace
+    svg = svg.replace(/<svg\b([^>]*)>/, function (whole, attrs) {
+        attrs = attrs.replace(/\s(width|height)\s*=\s*"[^"]*"/g, '');     // drop px width/height
+        if (attrs.indexOf('xmlns:shaper') === -1) {
+            attrs += ' xmlns:shaper="' + SHAPER_NS + '"';
+        }
+        var wh = (pxW && pxH)
+            ? ' width="' + fmt(pxW * toUnit) + '" height="' + fmt(pxH * toUnit) + '"'
+            : '';
+        return '<svg' + wh + attrs + '>';
+    });
+
+    // 4) annotate each shape with shaper:cutType (from its colors) and shaper:cutDepth
+    //    (from its id="ShaperDepth_<d>_<unit>…" tag). Matches Shaper Hub's own output,
+    //    e.g. shaper:cutType="inside" shaper:cutDepth="0.2 in".
+    svg = svg.replace(/<(path|rect|circle|ellipse|line|polyline|polygon)\b([^>]*)>/g,
+        function (whole, tag, attrs) {
+            var add = '';
+
+            // ── cutType from stroke/fill ──
+            if (attrs.indexOf('shaper:cutType') === -1) {
+                var sM = attrs.match(/\bstroke\s*=\s*"([^"]*)"/);
+                var fM = attrs.match(/\bfill\s*=\s*"([^"]*)"/);
+                var ct = _cutTypeFromColors(sM ? sM[1] : null, fM ? fM[1] : null);
+                if (ct) add += ' shaper:cutType="' + ct + '"';
+            }
+
+            // ── cutDepth from the id token (Shaper format: "<n> <unit>", note the space) ──
+            if (attrs.indexOf('shaper:cutDepth') === -1) {
+                var dM = attrs.match(/\bid\s*=\s*"ShaperDepth_([0-9p]+)_(in|mm)/);
+                if (dM) add += ' shaper:cutDepth="' + dM[1].replace(/p/g, '.') + ' ' + dM[2] + '"';
+            }
+
+            return add ? '<' + tag + add + attrs + '>' : whole;
+        }
+    );
+
+    file.open('w'); file.encoding = 'UTF-8';
+    file.write(svg); file.close();
+    return 'OK:' + file.fsName;
+}
