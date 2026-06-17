@@ -121,8 +121,9 @@ function applyCut(type) {
 
 // ──────────────────────────────────────────────────────────────────────────
 // tagDepth(depth, unit) — stamp/clear an on-tool cut depth on the selection
-//   Stored in PathItem.name as  ShaperDepth_<digits-with-p>_<in|mm>  so it
-//   survives SVG export as the element id (e.g. 0.25 → "ShaperDepth_0p25_in").
+//   Stored in PathItem.name as  ShaperDepth<digits-with-p><in|mm>  with NO separators:
+//   Illustrator escapes "_" in exported ids as "_x5F_", so the token is pure
+//   alphanumeric (left untouched). e.g. 0.2in → name/id "ShaperDepth0p2in".
 //   Empty/zero depth clears the tag.
 // ──────────────────────────────────────────────────────────────────────────
 function tagDepth(depth, unit) {
@@ -137,7 +138,7 @@ function tagDepth(depth, unit) {
     var token = '';
     if (depth !== null && depth !== '' && !isNaN(n) && n > 0) {
         if (unit !== 'mm') unit = 'in';
-        token = 'ShaperDepth_' + String(depth).replace(/\./g, 'p') + '_' + unit;
+        token = 'ShaperDepth' + String(depth).replace(/\./g, 'p') + unit;
     }
     for (var i = 0; i < paths.length; i++) paths[i].name = token;
     return token === '' ? 'CLEARED:' + paths.length : 'OK:' + paths.length;
@@ -223,7 +224,7 @@ function _postProcessSvg(file, unit) {
 
             // ── cutDepth from the id token (Shaper format: "<n> <unit>", note the space) ──
             if (attrs.indexOf('shaper:cutDepth') === -1) {
-                var dM = attrs.match(/\bid\s*=\s*"ShaperDepth_([0-9p]+)_(in|mm)/);
+                var dM = attrs.match(/\bid\s*=\s*"ShaperDepth([0-9p]+)(in|mm)/);
                 if (dM) add += ' shaper:cutDepth="' + dM[1].replace(/p/g, '.') + ' ' + dM[2] + '"';
             }
 
