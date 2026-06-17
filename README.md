@@ -54,7 +54,7 @@ Type a depth and click **Set Depth** to tag the selected paths (stored in the ob
 bash install.sh
 ```
 
-This enables CEP debug mode (so the unsigned panel loads), symlinks the extension into Illustrator's CEP extensions folder, and installs the cut-type scripts under **File ▸ Scripts**. Then fully quit and relaunch Illustrator:
+This enables CEP debug mode (so the unsigned panel loads), copies the extension into Illustrator's CEP extensions folder, and installs the cut-type scripts under **File ▸ Scripts**. Then fully quit and relaunch Illustrator:
 
 - Panel: **Window ▸ Extensions ▸ Shaper Origin**
 - Scripts: **File ▸ Scripts ▸ Shaper – …**

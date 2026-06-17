@@ -19,11 +19,14 @@ for v in 9 10 11 12; do
   defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1 2>/dev/null || true
 done
 
-# 2) Symlink the extension into the CEP extensions folder.
-echo "› Linking panel into CEP extensions…"
+# 2) Copy the extension into the CEP extensions folder.
+#    CEP on macOS does NOT load symlinked extensions — it must be a real folder.
+#    (Re-run this script after editing the panel to refresh the installed copy.)
+echo "› Copying panel into CEP extensions…"
 mkdir -p "$EXT_DIR"
-ln -sfn "$REPO" "$EXT_DIR/$EXT_ID"
-echo "  $EXT_DIR/$EXT_ID -> $REPO"
+rm -rf "$EXT_DIR/$EXT_ID"
+rsync -a --exclude '.git' --exclude '.gitignore' "$REPO/" "$EXT_DIR/$EXT_ID/"
+echo "  installed → $EXT_DIR/$EXT_ID"
 
 # 3) Generate File > Scripts wrappers (one per cut type) into each Illustrator Scripts folder.
 echo "› Installing File > Scripts wrappers…"
@@ -42,10 +45,11 @@ while IFS= read -r SCRIPTS_DIR; do
     INSTALLED_SCRIPTS=$((INSTALLED_SCRIPTS+1))
   done
   echo "  wrote 5 scripts → $SCRIPTS_DIR"
-done < <(find /Applications -maxdepth 2 -type d -path "*Adobe Illustrator*" -name Scripts 2>/dev/null)
+done < <(find /Applications -type d -path "*Adobe Illustrator*/Presets*/*/Scripts" 2>/dev/null)
 
 if [ "$INSTALLED_SCRIPTS" -eq 0 ]; then
-  echo "  none installed (use File > Scripts > Other Script… to run from $REPO instead)"
+  echo "  none installed — the panel covers everything; for File > Scripts entries re-run with sudo,"
+  echo "  or use File > Scripts > Other Script… to run from $REPO"
 fi
 
 echo
