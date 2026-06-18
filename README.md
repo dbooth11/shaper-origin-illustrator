@@ -4,6 +4,8 @@ An Adobe Illustrator panel that encodes Shaper Origin-compatible `cut-type` sett
 
 The panel maps Fill and Stroke values to cut types and allows you to set a depth for each cut.
 
+[Shaper Output panel](sample.png)
+
 It helps with:
 
 1. **SVG export tuning** — Uses presentation attributes (so fill/stroke are writable), outlines text, uses high coordinate precision, and disables raster mode.
