@@ -1,33 +1,14 @@
 # Shaper Output for Illustrator
 
-A small Adobe Illustrator panel that applies Shaper Origin-compatible `cut-type` encodings to selected paths and exports an Origin-compliant SVG, correctly sized, with cut types and cut depths encoded.
+An Adobe Illustrator panel that encodes Shaper Origin-compatible `cut-type` settings into SVG paths and exports Shaper-ready files with correct sizing, cut types, and cut depths.
 
-The panel applies defined Fill and Stroke values for selected type of cut.
-The panel allows a cut depth to be set for cut types. Illustrator has no clean way to set custom parameters for SVGs.
+The panel maps Fill and Stroke values to cut types and allows you to set a depth for each cut.
 
-## Cut-type encoding
+It helps with:
 
-| Cut type | Stroke | Fill | `shaper:cutType` | Encoded depth | Path must be |
-|---|---|---|---|---|---|
-| Interior (inside) | black `#000000` | white `#FFFFFF` | `inside` | yes | closed |
-| Exterior (outside) | black `#000000` | black `#000000` | `outside` | yes | closed |
-| On-line | gray `#7F7F7F` | none | `online` | yes | open or closed |
-| Pocket | none | gray `#7F7F7F` | `pocket` | yes | closed |
-| Guide | blue `#0068FF` | none | `guide` | preserve existing | open or closed |
-
-This exports SVGs that match the output format from Shaper Studio.
-
-## Using
-
-The panel is available at Window > Extensions > Shaper Output
-
-For `.ai` documents, **Export SVG** outputs a Shaper-ready SVG copy of the file. For `.svg` documents opened directly in Illustrator, it opens a Save As.. dialog.
-
-For exported copies, the export does three things in one pass:
-
-1. **Exports with Shaper-correct settings** — presentation attributes (so fill/stroke land as real attributes), text outlined, high coordinate precision, raster off.
-2. **Fixes the 72→96 sizing bug** — rewrites the SVG root to explicit physical `width`/`height` (in or mm) against the existing `viewBox`, so the part imports at true size.
-3. **Encodes Shaper attributes** — adds `xmlns:shaper`, `shaper:cutType` (from each shape's colors), and `shaper:cutDepth="<n> <unit>"` for depth-tagged shapes.
+1. **SVG export tuning** — Uses presentation attributes (so fill/stroke are writable), outlines text, uses high coordinate precision, and disables raster mode.
+2. **Corrects sizing** — Rewrites the SVG `width` and `height` as explicit physical dimensions (in or mm) relative to the existing `viewBox`, so parts import at true size in Shaper.
+3. **Adds Shaper metadata** — Includes `xmlns:shaper`, `shaper:cutType` (mapped from shape colors), and `shaper:cutDepth="<n> <unit>"` on depth-tagged shapes.
 
 Example output:
 
@@ -38,44 +19,33 @@ Example output:
         fill="#FFFFFF" stroke="#000000" .../>
 ```
 
-## Cut depth
-
-Select a path(s) and enter a depth/unit.
-Click **Set Depth** to apply the value to the selected  paths. Guides do not take depth values.
-
-Cut types are determined by the standard Fill and Stoke values and can just as easily be set in the Properties panel.
-Illustrator's normal Save/Export can preserve the visible cut-type colors, but it cannot write custom properties like `shaper:cutDepth`.
-**Any path with depth must use the `Export SVG` option.**
-
-If an imported SVG already has a `shaper:cutDepth` tag, we assume it is from Shaper Studio and preserve that value.
-
 ## Install
 
-**macOS only.** Requires Illustrator 2020+ (`ILST` 24.0+).
+Download this package and run `install.sh` in the terminal.
+This script:
 
-```bash
-git clone https://github.com/DBooth/shaper-origin-illustrator.git
-cd shaper-origin-illustrator
-./install.sh
-```
+- Sets the developer mode flag so Illustrator can install self-signed extensions.
+- Installs the extension.
 
-Then fully quit and relaunch Illustrator.
+After installation, restart Illustrator.
+The panel is available at Window > Extensions > Shaper Output
 
-- Panel: **Window ▸ Extensions ▸ Shaper Output**
-- Scripts: **File ▸ Scripts ▸ Shaper Output – …**
+Supports Illustrator 2020+ (`ILST` 24.0+) with CEP/CSXS 9.0 or newer.
 
-Re-run `install.sh` after any update to pick up changes (no relaunch needed if the panel is already open — just close and reopen it from Window ▸ Extensions).
+## Using
 
-## How it's built
+1. Select a path and choose a cut type from the panel.
+2. Repeat for each additional path.
+3. (Optional) To set a depth, enter a value and unit, then click **Set Depth**. Guides do not use depth values.
+4. Click **Export SVG** when ready.
 
-- `client/` — CEP panel (HTML/CSS/JS) + Adobe's CEP 9 `CSInterface.js` for Illustrator 2020+ compatibility
-- `host/shaper-core.jsxinc` — the engine (`applyCut`, `tagDepth`, `exportShaperOutput`)
-- `host/shaper.jsx` — CEP host entry point
-- `CSXS/manifest.xml` — extension manifest
-- `install.sh` — installer
-- `package-zxp.sh` — signed ZXP release packager using Adobe `ZXPSignCmd`
+**Export behavior:**
+- For `.ai` files, **Export SVG** creates a Shaper-ready SVG copy with the same name next to the .ai file.
+- For `.svg` files opened directly in Illustrator, it opens a Save As dialog.
 
-The panel is only chrome; all work runs in the ExtendScript host via `CSInterface.evalScript`.
+There is a bug in Illustrator around exporting SVGs, so Save As... is used as a workaround.
+
+**About depth values:** Illustrator's standard Save/Export preserves cut-type colors but cannot write custom properties like `shaper:cutDepth`. Any path with a depth value must use **Export SVG**. Paths without depth can export normally through Illustrator.
 
 ## Links
 
