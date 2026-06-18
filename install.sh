@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# install.sh — install the Shaper Origin panel + File > Scripts wrappers for Illustrator (macOS).
-# Single-user, no code-signing: enables CEP debug mode and symlinks the unsigned extension.
+# install.sh — install the Shaper Output panel + File > Scripts wrappers for Illustrator (macOS).
+# Single-user, no code-signing: enables CEP debug mode and copies the unsigned extension.
 #
 set -euo pipefail
 
@@ -10,10 +10,10 @@ EXT_ID="com.shaper.origin"
 EXT_DIR="$HOME/Library/Application Support/Adobe/CEP/extensions"
 CORE="$REPO/host/shaper-core.jsxinc"
 
-echo "Shaper Origin installer"
+echo "Shaper Output installer"
 echo "  repo: $REPO"
 
-# 1) Enable unsigned-extension loading for the CEP versions Illustrator 2024–2026 use.
+# 1) Enable unsigned-extension loading for the supported CEP/CSXS range.
 echo "› Enabling CEP PlayerDebugMode (CSXS 9–12)…"
 for v in 9 10 11 12; do
   defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1 2>/dev/null || true
@@ -25,7 +25,13 @@ done
 echo "› Copying panel into CEP extensions…"
 mkdir -p "$EXT_DIR"
 rm -rf "$EXT_DIR/$EXT_ID"
-rsync -a --exclude '.git' --exclude '.gitignore' "$REPO/" "$EXT_DIR/$EXT_ID/"
+mkdir -p "$EXT_DIR/$EXT_ID"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a "$REPO/CSXS" "$REPO/client" "$REPO/host" "$EXT_DIR/$EXT_ID/"
+else
+  cp -R "$REPO/CSXS" "$REPO/client" "$REPO/host" "$EXT_DIR/$EXT_ID/"
+fi
+[ -f "$REPO/LICENSE" ] && cp "$REPO/LICENSE" "$EXT_DIR/$EXT_ID/"
 echo "  installed → $EXT_DIR/$EXT_ID"
 
 # 3) Generate File > Scripts wrappers (one per cut type) into each Illustrator Scripts folder.
@@ -40,7 +46,8 @@ while IFS= read -r SCRIPTS_DIR; do
   fi
   for entry in "${TYPES[@]}"; do
     key="${entry%%:*}"; label="${entry##*:}"
-    out="$SCRIPTS_DIR/Shaper - ${label}.jsx"
+    rm -f "$SCRIPTS_DIR/Shaper - ${label}.jsx"
+    out="$SCRIPTS_DIR/Shaper Output - ${label}.jsx"
     printf '#include "%s"\napplyCut("%s");\n' "$CORE" "$key" > "$out"
     INSTALLED_SCRIPTS=$((INSTALLED_SCRIPTS+1))
   done
@@ -55,5 +62,5 @@ fi
 echo
 echo "Done. Next:"
 echo "  1. Fully quit and relaunch Illustrator."
-echo "  2. Open the panel:  Window ▸ Extensions ▸ Shaper Origin"
+echo "  2. Open the panel:  Window ▸ Extensions ▸ Shaper Output"
 echo "  3. Cut types also appear under  File ▸ Scripts."

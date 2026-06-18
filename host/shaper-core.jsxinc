@@ -1,8 +1,8 @@
 /*
- * shaper-core.jsxinc — Shaper Origin cut-encoding engine for Adobe Illustrator
- * GPL-3.0. Shared by the CEP panel (host/shaper.jsx) and the File > Scripts wrappers.
+ * shaper-core.jsxinc — Shaper Output cut-encoding engine for Adobe Illustrator
+ * MIT. Shared by the CEP panel (host/shaper.jsx) and the File > Scripts wrappers.
  *
- * Cut-type encoding verified against the Shaper Origin Product Manual (p.4):
+ * Cut-type encoding verified against the Shaper documentation (p.4):
  *     interior cut   → black stroke, white fill   (through-hole at SVG dimensions)
  *     exterior cut   → black stroke, black fill   (cut out a positive shape)
  *     on-line cut    → gray  stroke, no fill      (engrave on the line)
@@ -17,7 +17,7 @@
  *   cutDepth format is "<number> <unit>" (note the space), unit "in" or "mm".
  * Illustrator's SVG exporter will not emit these, so cutType is recovered from the fill/stroke
  * and depth is stamped into the path's NAME (exported as the element id), both converted to
- * shaper: attributes during exportForOrigin()'s post-process pass.
+ * shaper: attributes during exportShaperOutput()'s post-process pass.
  */
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@
 // ──────────────────────────────────────────────────────────────────────────
 var SHAPER_BLACK = [0,   0,   0  ];   // #000000
 var SHAPER_WHITE = [255, 255, 255];   // #FFFFFF
-var SHAPER_GRAY  = [127, 127, 127];   // #7F7F7F — R=G=B mid-gray ("Origin-readable gray")
+var SHAPER_GRAY  = [127, 127, 127];   // #7F7F7F — R=G=B mid-gray ("Shaper-readable gray")
 var SHAPER_BLUE  = [0,   104, 255];   // #0068FF — Shaper template guide blue
 
 // cut type → { stroke:[r,g,b]|null, fill:[r,g,b]|null }   (null = none)
@@ -46,6 +46,22 @@ function _rgb(rgb) {
     var c = new RGBColor();
     c.red = rgb[0]; c.green = rgb[1]; c.blue = rgb[2];
     return c;
+}
+
+function _toHex(c) {
+    function h(v) { var x = Math.round(v).toString(16); return x.length < 2 ? '0'+x : x; }
+    return '#' + h(c.red) + h(c.green) + h(c.blue);
+}
+
+function _cleanDepth(depth) {
+    var s = String(depth).replace(/^\s+|\s+$/g, '');
+    if (!/^\d*\.?\d+$/.test(s)) return null;
+    if (s.charAt(0) === '.') s = '0' + s;
+
+    var n = Number(s);
+    if (isNaN(n) || n <= 0) return null;
+
+    return s.replace(/^0+(?=\d)/, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 }
 
 // Map a shape's stroke/fill (as found in the exported SVG) to a Shaper cutType
@@ -80,6 +96,132 @@ function _collectPaths(items, out) {
         }
     }
     return out;
+}
+
+function _selectionKey(paths) {
+    var parts = [String(paths.length)];
+    for (var i = 0; i < paths.length; i++) {
+        var p = paths[i];
+        var id;
+        try {
+            var b = p.geometricBounds;
+            id = p.typename + ':' + b[0] + ',' + b[1] + ',' + b[2] + ',' + b[3];
+        } catch (e) {
+            id = p.typename + ':' + i;
+        }
+        parts.push(id);
+    }
+    return parts.join(',');
+}
+
+function _documentFile(doc) {
+    try {
+        return doc.fullName;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _sameFile(a, b) {
+    return a && b && String(a.fsName).toLowerCase() === String(b.fsName).toLowerCase();
+}
+
+function _exportSvgFile(doc, sourceFile) {
+    if (!sourceFile || !sourceFile.parent) return null;
+
+    var name = 'shaper-output';
+    try {
+        name = doc.name.replace(/\.[^\.]+$/, '') || name;
+    } catch (e) {}
+
+    var suffix = /\.svg$/i.test(sourceFile.fsName) ? '-export.svg' : '.svg';
+    return new File(sourceFile.parent.fsName + '/' + name + suffix);
+}
+
+function _confirmReplaceExport(file) {
+    if (!file.exists) return true;
+    return confirm('Replace existing exported SVG?\n\n' + file.fsName);
+}
+
+function _activateDocument(doc) {
+    try {
+        doc.activate();
+    } catch (e) {}
+}
+
+function _parseStyleAttr(styleText, out) {
+    if (!styleText) return out;
+    var parts = String(styleText).split(';');
+    for (var i = 0; i < parts.length; i++) {
+        var kv = parts[i].split(':');
+        if (kv.length < 2) continue;
+        var key = String(kv[0]).replace(/^\s+|\s+$/g, '').toLowerCase();
+        var val = String(kv.slice(1).join(':')).replace(/^\s+|\s+$/g, '');
+        if (key === 'fill' || key === 'stroke') out[key] = val;
+    }
+    return out;
+}
+
+function _cssClassStyles(svg) {
+    var styles = {};
+    var styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/g;
+    var block;
+    while ((block = styleBlockRe.exec(svg)) !== null) {
+        var ruleRe = /([^{}]+)\{([^{}]+)\}/g;
+        var rule;
+        while ((rule = ruleRe.exec(block[1])) !== null) {
+            var props = _parseStyleAttr(rule[2], {});
+            var selectors = String(rule[1]).split(',');
+            for (var i = 0; i < selectors.length; i++) {
+                var m = selectors[i].match(/\.([A-Za-z_][A-Za-z0-9_-]*)/);
+                if (!m) continue;
+                var cls = m[1];
+                if (!styles[cls]) styles[cls] = {};
+                if (props.fill !== undefined) styles[cls].fill = props.fill;
+                if (props.stroke !== undefined) styles[cls].stroke = props.stroke;
+            }
+        }
+    }
+    return styles;
+}
+
+function _shapePaint(attrs, classStyles) {
+    var paint = {};
+
+    // SVG cascade (lowest → highest): presentation attrs → class rules → inline style.
+    var sM = attrs.match(/\bstroke\s*=\s*"([^"]*)"/);
+    var fM = attrs.match(/\bfill\s*=\s*"([^"]*)"/);
+    if (sM) paint.stroke = sM[1];
+    if (fM) paint.fill   = fM[1];
+    if (paint.fill === undefined) paint.fill = '#000000'; // SVG default fill.
+
+    var classM = attrs.match(/\bclass\s*=\s*"([^"]*)"/);
+    if (classM) {
+        var classes = classM[1].split(/\s+/);
+        for (var i = 0; i < classes.length; i++) {
+            var rule = classStyles[classes[i]];
+            if (!rule) continue;
+            if (rule.fill   !== undefined) paint.fill   = rule.fill;
+            if (rule.stroke !== undefined) paint.stroke = rule.stroke;
+        }
+    }
+
+    var styleM = attrs.match(/\bstyle\s*=\s*"([^"]*)"/);
+    if (styleM) _parseStyleAttr(styleM[1], paint);
+
+    return paint;
+}
+
+function _svgExportOptions() {
+    var opts = new ExportOptionsSVG();
+    opts.embedRasterImages  = false;
+    opts.fontType           = SVGFontType.OUTLINEFONT;                  // outline text, no SVG fonts
+    opts.fontSubsetting     = SVGFontSubsetting.None;
+    opts.coordinatePrecision = 4;                                       // accurate geometry
+    opts.cssProperties      = SVGCSSPropertyLocation.PRESENTATIONATTRIBUTES; // fill=/stroke= as attrs
+    opts.documentEncoding   = SVGDocumentEncoding.UTF8;
+    opts.compressed         = false;
+    return opts;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -134,50 +276,62 @@ function tagDepth(depth, unit) {
     var paths = _collectPaths(sel, []);
     if (paths.length === 0) return 'Selection has no paths.';
 
-    var n = Number(depth);
+    var rawDepth = String(depth).replace(/^\s+|\s+$/g, '');
+    var cleanDepth = rawDepth ? _cleanDepth(rawDepth) : null;
     var token = '';
-    if (depth !== null && depth !== '' && !isNaN(n) && n > 0) {
+    if (rawDepth) {
+        if (!cleanDepth) return 'Enter a positive decimal depth.';
         if (unit !== 'mm') unit = 'in';
-        token = 'ShaperDepth' + String(depth).replace(/\./g, 'p') + unit;
+        token = 'ShaperDepth' + cleanDepth.replace(/\./g, 'p') + unit;
     }
     for (var i = 0; i < paths.length; i++) paths[i].name = token;
     return token === '' ? 'CLEARED:' + paths.length : 'OK:' + paths.length;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// exportForOrigin(unit) — export SVG with Shaper-correct settings, then fix the
+// exportShaperOutput(unit) — export SVG with Shaper-correct settings, then fix the
 //   72→96 dpi sizing bug and inject the shaper namespace + cutDepth attributes.
 //   `unit` ('in'|'mm') sets the physical width/height written on the root.
 // ──────────────────────────────────────────────────────────────────────────
-function exportForOrigin(unit) {
+function exportShaperOutput(unit) {
     if (app.documents.length === 0) return 'No document open.';
     if (unit !== 'mm') unit = 'in';
     var doc = app.activeDocument;
+    var sourceFile = _documentFile(doc);
 
-    var base = doc.name.replace(/\.[^\.]+$/, '');
-    var dest = File.saveDialog('Export for Origin — choose SVG destination', 'SVG:*.svg');
-    if (!dest) return 'Cancelled.';
-    if (!/\.svg$/i.test(dest.fsName)) dest = new File(dest.fsName + '.svg');
+    var dest = _exportSvgFile(doc, sourceFile);
+    if (!dest) return 'Save the Illustrator document before exporting SVG.';
+    if (_sameFile(dest, sourceFile)) return 'Choose an SVG destination; refusing to overwrite the open document.';
+    if (!_confirmReplaceExport(dest)) return 'Cancelled.';
 
-    // ──── SVG export options tuned for Shaper Origin ────
-    var opts = new ExportOptionsSVG();
-    opts.embedRasterImages  = false;
-    opts.fontType           = SVGFontType.OUTLINEFONT;                  // outline text, no SVG fonts
-    opts.fontSubsetting     = SVGFontSubsetting.None;
-    opts.coordinatePrecision = 4;                                       // accurate geometry
-    opts.cssProperties      = SVGCSSPropertyLocation.PRESENTATIONATTRIBUTES; // fill=/stroke= as attrs
-    opts.documentEncoding   = SVGDocumentEncoding.UTF8;
-    opts.compressed         = false;
+    var nDocsBefore = app.documents.length;
+    doc.exportFile(dest, ExportType.SVG, _svgExportOptions());
 
-    doc.exportFile(dest, ExportType.SVG, opts);
+    // Known ExtendScript bug: exportFile(SVG) sometimes opens the result as a new document
+    // or reassigns the working doc's path to the SVG destination (Save As side-effect).
+    // Guard A: close any newly-spawned document (safe — it didn't exist before this call).
+    while (app.documents.length > nDocsBefore) {
+        try { app.activeDocument.close(SaveOptions.DONOTSAVECHANGES); } catch (e) { break; }
+    }
+    // Guard B: path was reassigned to the SVG. The doc content is still in memory unchanged;
+    // save it back to the original .ai path to restore the file association without data loss.
+    if (sourceFile && !_sameFile(_documentFile(app.activeDocument), sourceFile)) {
+        try { app.activeDocument.saveAs(sourceFile, new IllustratorSaveOptions()); } catch (e) {}
+    }
+    _activateDocument(doc);
 
-    return _postProcessSvg(dest, unit);
+    var result = _postProcessSvg(dest, unit, 'OK:');
+    _activateDocument(doc);
+    return result;
 }
 
 // Read the exported SVG, rewrite the root for correct real-world size, inject depths.
-function _postProcessSvg(file, unit) {
-    file.open('r'); file.encoding = 'UTF-8';
+function _postProcessSvg(file, unit, resultPrefix) {
+    if (!resultPrefix) resultPrefix = 'OK:';
+    if (!file.open('r')) return 'ERR: could not read exported SVG.';
+    file.encoding = 'UTF-8';
     var svg = file.read(); file.close();
+    var classStyles = _cssClassStyles(svg);
 
     // 1) user-unit extent — prefer viewBox, fall back to numeric width/height (Illustrator: 72/in)
     var pxW = null, pxH = null;
@@ -215,17 +369,23 @@ function _postProcessSvg(file, unit) {
             var add = '';
 
             // ── cutType from stroke/fill ──
+            var ct = null;
             if (attrs.indexOf('shaper:cutType') === -1) {
-                var sM = attrs.match(/\bstroke\s*=\s*"([^"]*)"/);
-                var fM = attrs.match(/\bfill\s*=\s*"([^"]*)"/);
-                var ct = _cutTypeFromColors(sM ? sM[1] : null, fM ? fM[1] : null);
+                var paint = _shapePaint(attrs, classStyles);
+                ct = _cutTypeFromColors(paint.stroke, paint.fill);
                 if (ct) add += ' shaper:cutType="' + ct + '"';
+            } else {
+                var ctM = attrs.match(/\bshaper:cutType\s*=\s*"([^"]*)"/);
+                ct = ctM ? ctM[1] : null;
             }
-
             // ── cutDepth from the id token (Shaper format: "<n> <unit>", note the space) ──
-            if (attrs.indexOf('shaper:cutDepth') === -1) {
-                var dM = attrs.match(/\bid\s*=\s*"ShaperDepth([0-9p]+)(in|mm)/);
-                if (dM) add += ' shaper:cutDepth="' + dM[1].replace(/p/g, '.') + ' ' + dM[2] + '"';
+            // The Illustrator object name is the source of truth when present.
+            // If a path has no ShaperDepth id, preserve existing shaper:cutDepth so
+            // externally-authored/Shaper-authored SVG depths survive round-trips.
+            var dM = attrs.match(/\bid\s*=\s*"ShaperDepth([0-9p]+)(in|mm)"/);
+            if (dM) {
+                attrs = attrs.replace(/\s+shaper:cutDepth\s*=\s*"[^"]*"/g, '');
+                add += ' shaper:cutDepth="' + dM[1].replace(/p/g, '.') + ' ' + dM[2] + '"';
             }
 
             return add ? '<' + tag + add + attrs + '>' : whole;
@@ -234,5 +394,40 @@ function _postProcessSvg(file, unit) {
 
     file.open('w'); file.encoding = 'UTF-8';
     file.write(svg); file.close();
-    return 'OK:' + file.fsName;
+    return resultPrefix + file.fsName;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// getSelectionInfo() — returns cut type + depth for the first selected path.
+//   Format: "cutType|depthValue|unit|selectionKey"  e.g. "interior|0.2|in|1,<uuid>"
+//   cutType is a UI key (interior/exterior/online/pocket/guide) or "none".
+//   depthValue is a decimal string or "" when no depth tag is present.
+//   Used by the panel to highlight the active cut type and populate the depth field.
+// ──────────────────────────────────────────────────────────────────────────
+function getSelectionInfo() {
+    if (app.documents.length === 0) return 'none|||';
+    var sel = app.activeDocument.selection;
+    if (!sel || sel.length === 0) return 'none|||';
+    var paths = _collectPaths(sel, []);
+    if (paths.length === 0) return 'none|||';
+    var p = paths[0];
+
+    // ── cut type from stroke/fill ──
+    var s = (p.stroked && p.strokeColor && p.strokeColor.typename === 'RGBColor')
+        ? _toHex(p.strokeColor) : 'none';
+    var f = (p.filled && p.fillColor && p.fillColor.typename === 'RGBColor')
+        ? _toHex(p.fillColor) : 'none';
+    var cutType = 'none';
+    if (s === '#000000' && f === '#ffffff') cutType = 'interior';
+    else if (s === '#000000' && f === '#000000') cutType = 'exterior';
+    else if (s === '#7f7f7f' && f === 'none')    cutType = 'online';
+    else if (s === 'none'    && f === '#7f7f7f') cutType = 'pocket';
+    else if (s === '#0068ff' && f === 'none')    cutType = 'guide';
+
+    // ── depth from name tag: ShaperDepth0p2in ──
+    var depthVal = '', depthUnit = '';
+    var m = p.name && p.name.match(/^ShaperDepth([0-9p]+)(in|mm)$/);
+    if (m) { depthVal = m[1].replace(/p/g, '.'); depthUnit = m[2]; }
+
+    return cutType + '|' + depthVal + '|' + depthUnit + '|' + _selectionKey(paths);
 }

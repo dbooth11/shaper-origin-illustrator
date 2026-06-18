@@ -70,17 +70,27 @@ button {
   padding: 8px 9px;
   background: var(--surface);
   border: 1px solid var(--border);
+  color: var(--text);
   text-align: left;
 }
-.cut:hover { background: var(--surface-hi); border-color: var(--border-hi); }
+.cut:hover  { background: var(--surface-hi); border-color: var(--border-hi); }
+.cut.active { background: #e0f5f3; border-color: var(--accent); border-left-width: 3px; color: #0a2e2b; }
+.cut .hint  { color: var(--hint); }
 
 .cut .sw {
   width: 15px; height: 15px;
   border-radius: 2px;
   flex: 0 0 auto;
 }
+.cut-header { display: flex; justify-content: space-between; }
+
 .cut .name { font-weight: 500; }
-.cut .hint { margin-left: auto; font-size: 11px; color: var(--hint); }
+.cut .vals {
+  margin-left: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--dim);
+}
 
 /* Depth row */
 .row { display: flex; gap: 6px; }
@@ -98,6 +108,7 @@ input[type="number"], select {
 }
 select { flex: 0 0 58px; }
 input:focus, select:focus { outline: none; border-color: var(--accent); }
+input.has-depth { background: #e0f5f3; border-color: var(--accent); color: #0a2e2b; }
 
 .ghost {
   flex: 1 1 50%;

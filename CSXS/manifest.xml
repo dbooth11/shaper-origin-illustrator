@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0" ExtensionBundleId="com.shaper.origin" ExtensionBundleVersion="1.0.0"
-    ExtensionBundleName="Shaper Origin" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    ExtensionBundleName="Shaper Output" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
     <Extension Id="com.shaper.origin.panel" Version="1.0.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
-      <!-- ILST = Illustrator. 2025 = v29, 2026 = v30. -->
+      <!-- ILST = Illustrator. Version 24 = 2020; newer releases use later CEP runtimes. -->
       <Host Name="ILST" Version="[24.0,99.9]"/>
     </HostList>
     <LocaleList>
@@ -22,17 +22,14 @@
         <Resources>
           <MainPath>./client/index.html</MainPath>
           <ScriptPath>./host/shaper.jsx</ScriptPath>
-          <CEFCommandLine>
-            <Parameter>--allow-file-access-from-files</Parameter>
-            <Parameter>--allow-file-access</Parameter>
-          </CEFCommandLine>
+          <CEFCommandLine/>
         </Resources>
         <Lifecycle>
           <AutoVisible>true</AutoVisible>
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>Shaper Origin</Menu>
+          <Menu>Shaper Output</Menu>
           <Geometry>
             <Size><Height>460</Height><Width>240</Width></Size>
             <MinSize><Height>360</Height><Width>200</Width></MinSize>

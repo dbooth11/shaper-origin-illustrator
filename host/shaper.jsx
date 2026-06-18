@@ -1,6 +1,6 @@
 /*
  * shaper.jsx — CEP host entry point. Loaded via manifest ScriptPath.
- * Pulls in the engine so the panel can call applyCut() / tagDepth() / exportForOrigin().
+ * Pulls in the engine so the panel can call applyCut() / tagDepth() / exportShaperOutput().
  */
 #include "shaper-core.jsxinc"
 

@@ -3,39 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Shaper Origin</title>
+  <title>Shaper Output</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="panel">
-    <h1>SHAPER ORIGIN</h1>
-
     <section>
-      <div class="label">Cut Type</div>
+      <div class="label cut-header">
+        <span>Cut</span><span>Fill / Stroke</span>
+      </div>
       <button class="cut" data-cut="interior">
         <span class="sw" style="background:#fff;border:2px solid #000"></span>
-        <span class="name">Interior</span><span class="hint">through-hole</span>
+        <span class="name">Interior</span><span class="vals">#FFFFFF / #000000</span>
       </button>
       <button class="cut" data-cut="exterior">
         <span class="sw" style="background:#000;border:2px solid #000"></span>
-        <span class="name">Exterior</span><span class="hint">cut out shape</span>
+        <span class="name">Exterior</span><span class="vals">#000000 / #000000</span>
       </button>
       <button class="cut" data-cut="online">
         <span class="sw" style="background:transparent;border:2px solid #7f7f7f"></span>
-        <span class="name">On-line</span><span class="hint">engrave</span>
+        <span class="name">On-line</span><span class="vals">none / #7F7F7F</span>
       </button>
       <button class="cut" data-cut="pocket">
         <span class="sw" style="background:#7f7f7f;border:2px solid #7f7f7f"></span>
-        <span class="name">Pocket</span><span class="hint">remove to depth</span>
+        <span class="name">Pocket</span><span class="vals">#7F7F7F / none</span>
       </button>
       <button class="cut" data-cut="guide">
         <span class="sw" style="background:transparent;border:2px solid #0068ff"></span>
-        <span class="name">Guide</span><span class="hint">reference</span>
+        <span class="name">Guide</span><span class="vals">none / #0068FF</span>
       </button>
     </section>
 
     <section>
-      <div class="label">Cut Depth <span class="sub">(pocket / interior)</span></div>
+      <div class="label">Cut Depth</div>
       <div class="row">
         <input id="depthVal" type="number" step="0.01" min="0" placeholder="0.25" inputmode="decimal">
         <select id="depthUnit">
@@ -49,7 +49,7 @@
       </div>
     </section>
 
-    <button id="exportBtn" class="primary">Export for Origin</button>
+    <button id="exportBtn" class="primary">Export SVG</button>
 
     <div id="status" class="status">Select path(s), pick a cut type.</div>
   </div>

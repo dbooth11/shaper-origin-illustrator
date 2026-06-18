@@ -1,5 +1,5 @@
 /*
- * main.js — Shaper Origin panel UI logic.
+ * main.js — Shaper Output panel UI logic.
  * The panel is just chrome; every real action runs in the ExtendScript host
  * (host/shaper-core.jsxinc) via CSInterface.evalScript. Degrades gracefully when
  * opened outside Illustrator (e.g. a browser) so the layout can be previewed.
@@ -68,6 +68,65 @@
     }
   }
 
+  // ── Selection watcher — highlight cut type + populate depth when a tagged path is selected ──
+  var _activeCut = null;
+  var _selectionKey = null;
+  var depthInput = document.getElementById('depthVal');
+  var depthUnit = document.getElementById('depthUnit');
+  var editingDepth = false;
+
+  depthInput.addEventListener('input', function () {
+    editingDepth = true;
+  });
+
+  depthUnit.addEventListener('change', function () {
+    editingDepth = true;
+  });
+
+  function setDepthField(value, unit) {
+    if (value) {
+      if (!editingDepth) {
+        depthInput.value = value;
+        depthUnit.value = unit || 'in';
+      }
+      depthInput.classList.add('has-depth');
+    } else {
+      if (!editingDepth) {
+        depthInput.value = '';
+      }
+      depthInput.classList.remove('has-depth');
+    }
+  }
+
+  function refreshSelection() {
+    cs.evalScript('getSelectionInfo()', function (res) {
+      if (!res || res === 'EvalScript error.') return;
+      var parts = res.split('|');              // [cutType, depthVal, depthUnit]
+      var type  = parts[0] !== 'none' ? parts[0] : null;
+      var dVal  = parts[1];
+      var dUnit = parts[2];
+      var selectionKey = parts[3] || '';
+
+      if (selectionKey !== _selectionKey) {
+        _selectionKey = selectionKey;
+        editingDepth = false;
+      }
+
+      // Highlight matching cut-type button
+      if (type !== _activeCut) {
+        _activeCut = type;
+        var btns = document.querySelectorAll('.cut');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].classList.toggle('active', btns[i].getAttribute('data-cut') === type);
+        }
+      }
+
+      // Reflect the selected path's stored depth. Untagged paths show a blank field.
+      setDepthField(dVal, dUnit);
+    });
+  }
+  if (inCEP) setInterval(refreshSelection, 500);
+
   // ── Cut-type buttons ──
   var CUT_LABEL = {
     interior: 'Interior', exterior: 'Exterior',
@@ -96,22 +155,41 @@
     return JSON.stringify(v) + ',' + JSON.stringify(u);
   }
 
+  function cleanPositiveDecimal(v) {
+    v = String(v).replace(/^\s+|\s+$/g, '');
+    if (!/^\d*\.?\d+$/.test(v)) return null;
+    return Number(v) > 0 ? v : null;
+  }
+
   document.getElementById('applyDepth').addEventListener('click', function () {
     var v = document.getElementById('depthVal').value;
-    if (v === '' || Number(v) <= 0) { setStatus('Enter a depth greater than 0.', 'err'); return; }
-    host('tagDepth(' + depthArgs() + ')', function (res) { reportCount(res, 'Depth set on', 'path(s)'); });
+    var depth = cleanPositiveDecimal(v);
+    if (!depth) { setStatus('Enter a positive decimal depth.', 'err'); return; }
+    host('tagDepth(' + depthArgs() + ')', function (res) {
+      reportCount(res, 'Depth set on', 'path(s)');
+      if (res.indexOf('OK:') === 0) {
+        editingDepth = false;
+        depthInput.classList.add('has-depth');
+      }
+    });
   });
 
   document.getElementById('clearDepth').addEventListener('click', function () {
     var u = document.getElementById('depthUnit').value;
-    host('tagDepth("",' + JSON.stringify(u) + ')', function (res) { reportCount(res, 'Cleared', 'path(s)'); });
+    host('tagDepth("",' + JSON.stringify(u) + ')', function (res) {
+      reportCount(res, 'Cleared', 'path(s)');
+      if (res.indexOf('CLEARED:') === 0) {
+        editingDepth = false;
+        setDepthField('', u);
+      }
+    });
   });
 
-  // ── Export for Origin ──
+  // ── Export SVG ──
   document.getElementById('exportBtn').addEventListener('click', function () {
     var u = document.getElementById('depthUnit').value;
     setStatus('Exporting…', null);
-    host('exportForOrigin(' + JSON.stringify(u) + ')', function (res) {
+    host('exportShaperOutput(' + JSON.stringify(u) + ')', function (res) {
       if (res.indexOf('OK:') === 0) {
         var path = res.slice(3);
         setStatus('Exported → ' + path.replace(/^.*[\/\\]/, ''), 'ok');
